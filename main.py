@@ -1,62 +1,60 @@
 from fastapi import FastAPI, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import requests
-from io import BytesIO
-from PIL import Image
 import base64
+import os
 
 app = FastAPI()
 
-# Allow requests from your frontend domain
+# ✅ Allow Netlify frontend to call backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For MVP, allow all
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Hugging Face API token (replace with your own)
-HF_TOKEN = "YOUR_HUGGING_FACE_API_TOKEN"
+# Utility: convert image → base64
+def image_to_base64(path: str):
+    with open(path, "rb") as img:
+        return "data:image/png;base64," + base64.b64encode(img.read()).decode("utf-8")
 
-# Function to call Hugging Face API
-def generate_image(prompt):
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    API_URL = "https://api-inference.huggingface.co/models/gsdf/Counterfeit-V2.5"
-    
-    payload = {"inputs": prompt}
-    response = requests.post(API_URL, headers=headers, json=payload)
-    
-    # Hugging Face returns bytes
-    image_bytes = response.content
-    img = Image.open(BytesIO(image_bytes))
-    
-    # Convert to base64 string to send to frontend
-    buffered = BytesIO()
-    img.save(buffered, format="PNG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    return f"data:image/png;base64,{img_str}"
 
-# API Endpoint
 @app.post("/generate")
-def generate_design(plot_size: str = Form(...), style: str = Form(...), facing: str = Form(...)):
-    # Create prompts
-    floor_prompt = f"2D architectural floor plan, top-down, {plot_size} plot, 2BHK, clean lines"
-    interior_prompt = f"{style} Indian interior design, living room, realistic lighting"
-    exterior_prompt = f"{style} Indian house exterior, front elevation, {plot_size} plot, realistic rendering"
-    
-    # Generate images
-    floor_img = generate_image(floor_prompt)
-    interior_img = generate_image(interior_prompt)
-    exterior_img = generate_image(exterior_prompt)
-    
-    # Simple Vastu logic
-    vastu_score = 85 if facing in ["East", "North"] else 70
-    
+async def generate(
+    plot_size: str = Form(...),
+    style: str = Form(...),
+    facing: str = Form(...)
+):
+    """
+    MVP backend:
+    - Returns sample images as Base64
+    - Returns vastu score
+    """
+
+    # ⚠️ These image files MUST exist in repo
+    floor_plan = image_to_base64("floor_plan.png")
+    interior = image_to_base64("interior.png")
+    exterior = image_to_base64("exterior.png")
+
+    # Simple vastu logic (MVP)
+    vastu_map = {
+        "East": 90,
+        "North": 85,
+        "West": 75,
+        "South": 70
+    }
+
+    vastu_score = vastu_map.get(facing, 80)
+
     return {
-        "floor_plan": floor_img,
-        "interior": interior_img,
-        "exterior": exterior_img,
+        "floor_plan": floor_plan,
+        "interior": interior,
+        "exterior": exterior,
         "vastu_score": vastu_score
     }
+
+
+@app.get("/")
+def health_check():
+    return {"status": "Backend is running"}
